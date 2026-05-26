@@ -205,7 +205,7 @@
 
 "use client";
 
-import { useRef, useMemo, useEffect, useState, Suspense } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
@@ -383,28 +383,16 @@ const DARK_PARTS = new Set([
 ]);
 
 export function Laptop(props: any) {
+  const { rotationY = -0.15 } = props;
   const group = useRef<THREE.Group>(null);
   const screenTex = useScreenTexture();
-  const [scene, setScene] = useState<THREE.Group | null>(null);
-  const [hovered, setHovered] = useState(false);
-
-  // Proper hook usage - use try/catch with useGLTF
-  const gltf = useGLTF(MODEL_URL);
+  const { scene } = useGLTF(MODEL_URL);
+  const model = useMemo(() => scene.clone(true), [scene]);
 
   useEffect(() => {
-    if (gltf?.scene) {
-      setScene(gltf.scene.clone() as THREE.Group);
-    }
-  }, [gltf?.scene]);
+    if (!model || !screenTex) return;
 
-  useEffect(() => {
-    if (!scene || !screenTex) return;
-    
-    screenTex.flipY = false;
-    screenTex.rotation = Math.PI / 2;
-    screenTex.center.set(0.5, 0.5);
-
-    scene.traverse((child: any) => {
+    model.traverse((child: any) => {
       if (child.isMesh) {
         const matName = child.material?.name?.toLowerCase() || "";
         const nodeName = child.name.toLowerCase();
@@ -445,20 +433,6 @@ export function Laptop(props: any) {
             envMapIntensity: 1.2,
           });
         }
-        else if (
-          matName.includes("body") ||
-          matName.includes("aluminum") ||
-          matName.includes("mac") ||
-          matName.includes("frame") ||
-          nodeName.includes("base")
-        ) {
-          child.material = new THREE.MeshStandardMaterial({
-            color: new THREE.Color("#3a3a3f"),
-            roughness: 0.18,
-            metalness: 0.92,
-            envMapIntensity: 2.0,
-          });
-        }
         // Bezels and details
         else if (matName.includes("bezel") || matName.includes("edge")) {
           child.material = new THREE.MeshStandardMaterial({
@@ -467,60 +441,37 @@ export function Laptop(props: any) {
             metalness: 0.85,
           });
         }
+        // Machined aluminum unibody - Space Gray (remaining shell meshes)
+        else {
+          child.material = new THREE.MeshStandardMaterial({
+            color: new THREE.Color("#3a3a3f"),
+            roughness: 0.18,
+            metalness: 0.92,
+            envMapIntensity: 2.0,
+          });
+        }
 
         // Enable shadows for photorealism
         child.castShadow = true;
         child.receiveShadow = true;
       }
     });
-  }, [scene, screenTex]);
+  }, [model, screenTex]);
 
   useFrame((state) => {
     if (!group.current) return;
     const t = state.clock.elapsedTime;
     
-    // God-level smooth floating with micro-movements
-    group.current.position.y = Math.sin(t * 0.6) * 0.08 - 0.5;
-    
-    // Elegant rotation showing off all angles of perfection
-    group.current.rotation.y = Math.sin(t * 0.3) * 0.18 + (props.rotationY || -0.15);
-    group.current.rotation.x = Math.sin(t * 0.15) * 0.06 + 0.12;
-    group.current.rotation.z = Math.sin(t * 0.25) * 0.04;
-    
-    // Subtle scale pulse on hover
-    if (hovered) {
-      group.current.scale.lerp(
-        new THREE.Vector3(1.08, 1.08, 1.08),
-        0.05
-      );
-    } else {
-      group.current.scale.lerp(
-        new THREE.Vector3(1, 1, 1),
-        0.05
-      );
-    }
+    group.current.position.y = Math.sin(t * 0.6) * 0.08 - 0.2;
+
+    group.current.rotation.y = Math.sin(t * 0.35) * 0.32 + rotationY;
+    group.current.rotation.x = Math.sin(t * 0.2) * 0.14 + 0.12;
+    group.current.rotation.z = Math.sin(t * 0.28) * 0.08;
   });
 
   return (
-    <group 
-      ref={group} 
-      {...props} 
-      dispose={null}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-    >
-      {scene ? (
-        <primitive object={scene} />
-      ) : (
-        <mesh>
-          <boxGeometry args={[2, 1.2, 0.1]} />
-          <meshStandardMaterial 
-            color="#3a3a3f"
-            metalness={0.9}
-            roughness={0.1}
-          />
-        </mesh>
-      )}
+    <group ref={group} dispose={null}>
+      <primitive object={model} />
       
       {/* Premium multi-point lighting setup */}
       <pointLight 
